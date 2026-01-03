@@ -7,101 +7,77 @@
 
 配置FFT参数：
 
-    #define FFT_LEN 4096                 // 增加FFT长度提高频率分辨率  
-    #define SAMPLING_FREQ 200000         // 提高采样频率到100kHz，覆盖0-100kHz范围
-    #define MIN_FREQ_THRESHOLD 50        // 最小频率阈值，过滤低频噪声
-    #define MAX_FREQ_THRESHOLD 100000    // 最大频率阈值，对应采样频率的一半
+#define FFT_LEN 4096                 // FFT长度
+#define SAMPLING_FREQ 200000         // 采样频率
+#define MIN_FREQ_THRESHOLD 50        // 最小频率阈值
+#define MAX_FREQ_THRESHOLD 100000    // 最大频率阈值
 
 打印频谱分析结果：
 
-      // 打印频谱信息
-      void print_spectrum_info(FrequencyComponent first, FrequencyComponent second) {
-          float frequency_resolution = (float)SAMPLING_FREQ / FFT_LEN;
-          
-          // 输出频谱信息
-          printf("=== 频谱分析结果 ===\r\n");
-          printf("采样频率: %d Hz\r\n", SAMPLING_FREQ);
-          printf("频率分辨率: %.2f Hz\r\n", frequency_resolution);
-          printf("最大频率分量: %.2f Hz, 幅度: %.4f\r\n", first.frequency, first.magnitude);
-          printf("第二大频率分量: %.2f Hz, 幅度: %.4f\r\n", second.frequency, second.magnitude);
-          printf("====================\r\n\r\n");
-      }
+void print_spectrum_info(FrequencyComponent first, FrequencyComponent second) {
+    float frequency_resolution = (float)SAMPLING_FREQ / FFT_LEN;
+    
+    printf("====================\r\n\r\n");
+    printf("采样频率: %d Hz\r\n", SAMPLING_FREQ);
+    printf("频率分辨率: %.2f Hz\r\n", frequency_resolution);
+    printf("最大频率分量: %.2f Hz, 幅度: %.4f\r\n", first.frequency, first.magnitude);
+    printf("第二大频率分量: %.2f Hz, 幅度: %.4f\r\n", second.frequency, second.magnitude);
+    printf("====================\r\n\r\n");
+}
 
 
 主循环部分：
 
-       while(1)
-        {
-    				i++;
-            // 从ADC读取采样数据
-            for (int i = 0; i < FFT_LEN; i++) {
-                // 仅使用ADC1_IN4通道数据进行FFT分析
-                adc_samples[i] = (float)ADC_ConvertedValue[0] * (3.3f / 4096.0f);
-            
-            // 应用汉宁窗函数，减少频谱泄漏
-            adc_samples[i] *= hann_window[i];
-            
-            // 等待下一个采样点，确保采样率正确
-            delay_us(1000000 / SAMPLING_FREQ);  // 根据采样率延时
-        }				    
-        
-        // 准备FFT输入数据（转换为复数形式）
-        for (int i = 0; i < FFT_LEN; i++) {
-            fft_input[i * 2] = adc_samples[i];      // 实部
-            fft_input[i * 2 + 1] = 0.0f;            // 虚部（初始化为0）
-        }
+     while(1)
+    {
+				i++;
 			
-			    // 当采样满FFT_LEN（4096点）时，执行FFT分析
+        for (int i = 0; i < FFT_LEN; i++) {
+            adc_samples[i] = (float)ADC_ConvertedValue[0] * (3.3f / 4096.0f);
+            adc_samples[i] *= hann_window[i];
+            delay_us(1000000 / SAMPLING_FREQ);
+        }				    
+        for (int i = 0; i < FFT_LEN; i++) {
+            fft_input[i * 2] = adc_samples[i];
+            fft_input[i * 2 + 1] = 0.0f; 
+        }
+				
 					if (sample_count >= FFT_LEN)
 					{
-            // 1. 重置采样计数器，准备下一帧
             sample_count = 0;
-            
-            // 2. 对采集的adc_samples应用汉宁窗
             for (int i = 0; i < FFT_LEN; i++) {
-                adc_samples[i] *= hann_window[i]; // 仅需加窗，无需再转换AD值
+                adc_samples[i] *= hann_window[i]; 
             }
             
-            // 3. 后续FFT处理（与原有代码相同）
             for (int i = 0; i < FFT_LEN; i++) {
                 fft_input[i * 2] = adc_samples[i];      // 实部
                 fft_input[i * 2 + 1] = 0.0f;            // 虚部
             }
      
-        // 执行FFT计算
         arm_cfft_radix4_f32(&scfft, fft_input);
-        
-        // 计算幅度谱
         arm_cmplx_mag_f32(fft_input, fft_output, FFT_LEN);
-        
-        // 查找最大的两个频率分量
         find_top_two_frequencies_improved(&first, &second);
         
-			}
+			}	
 					
-			   // 定期输出信息和更新LED状态					
-			     if (i % 500 == 0) {		   
-						 
-            // 更新AD9959输出频率
+						if (i % 500 == 0) 
+					 {		  
             if(first.frequency > MIN_FREQ_THRESHOLD && first.frequency < MAX_FREQ_THRESHOLD) {
                 AD9959_Set_Fre(CH0, (u32)first.frequency);
                 AD9959_Set_Amp(CH0, 1023);
                 AD9959_Set_Phase(CH0, 0);
                 printf("CH0设置频率为%.2fHz\r\n", first.frequency);
-            }          
-            if(second.frequency > MIN_FREQ_THRESHOLD && second.frequency < MAX_FREQ_THRESHOLD) {
+            } 
+						
+            if(second.frequency > MIN_FREQ_THRESHOLD && second.frequency < MAX_FREQ_THRESHOLD) 
+					 {
                 AD9959_Set_Fre(CH1, (u32)second.frequency);
                 AD9959_Set_Amp(CH1, 1023);
                 AD9959_Set_Phase(CH1, 0);
                 printf("CH1设置频率为%.2fHz\r\n", second.frequency);
             }          
-            IO_Update();  // 更新AD9959输出           
-            // 打印频谱分析结果
+            IO_Update();            
             print_spectrum_info(first, second);
 						delay_ms(2000);
-        }
-			
-        if (i % 200 == 0) {
-            LED1 = !LED1;  // 闪烁LED指示系统运行
         }
     }
